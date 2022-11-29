@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 )
 
 type Client struct {
@@ -18,6 +19,7 @@ type Client struct {
 	msg     chan Msg
 	sendMsg chan string
 	quit    chan int
+	errChan chan error
 }
 
 type Msg struct {
@@ -32,6 +34,7 @@ func Initialize() *Client {
 		msg:     make(chan Msg),
 		quit:    make(chan int),
 		sendMsg: make(chan string),
+		errChan: make(chan error),
 	}
 
 	return client
@@ -57,6 +60,8 @@ func (c *Client) Start() {
 		select {
 		case <-c.quit:
 			return
+		case <-c.errChan:
+			return
 		}
 	}
 }
@@ -76,6 +81,7 @@ func (c *Client) ListenKeyBoard() {
 			log.Printf("                              【我】%s\n", inputInfo)
 			c.sendMsg <- inputInfo
 		}
+		time.Sleep(time.Millisecond * 10)
 	}
 }
 
@@ -86,13 +92,15 @@ func (c *Client) SendMsg() {
 			pkt, err := Encode(info)
 			if err != nil {
 				log.Println("encode msg error", err.Error())
-				return
+				c.errChan <- err
 			}
 
 			if _, err = c.conn.Write(pkt); err != nil {
 				log.Println("send msg to server error", err.Error())
-				return
+				c.errChan <- err
 			}
+		default:
+			time.Sleep(time.Millisecond * 10)
 		}
 	}
 }
@@ -100,47 +108,67 @@ func (c *Client) SendMsg() {
 func (c *Client) ReceiveMsg() {
 	for {
 		var l uint16
+		var ipLen uint16
 		buf := make([]byte, 2)
 		n, err := io.ReadFull(c.conn, buf)
 		if n == 0 && err == io.EOF {
+			time.Sleep(time.Millisecond * 10)
 			continue
 		}
 
 		if err != nil {
 			log.Println("read len error", err.Error())
-			return
+			c.errChan <- err
 		}
 
 		r := bytes.NewBuffer(buf)
 		err = binary.Read(r, binary.BigEndian, &l)
 		if err != nil {
 			log.Println("read length from buf error")
-			return
+			c.errChan <- err
 		}
 
-		ipBuf := make([]byte, 15)
+		ipBuf := make([]byte, 2)
+		n, err = io.ReadFull(c.conn, ipBuf)
+		if n == 0 && err == io.EOF {
+			log.Println("read ip length error")
+			c.errChan <- err
+		}
+
+		ipBuffer := bytes.NewBuffer(ipBuf)
+		err = binary.Read(ipBuffer, binary.BigEndian, &ipLen)
+		if err != nil {
+			log.Println("read ip str error", err.Error())
+			c.errChan <- err
+		}
+
+		ipStrBuf := make([]byte, ipLen)
 		headBuf := make([]byte, 5)
-		dateBuf := make([]byte, l-25)
+		dateBuf := make([]byte, l-10-ipLen)
 		tailBuf := make([]byte, 5)
 
-		n, err = io.ReadFull(c.conn, ipBuf)
+		n, err = io.ReadFull(c.conn, ipStrBuf)
 		if err != nil {
 			log.Println("read ip error", err.Error())
+			c.errChan <- err
 		}
 
 		n, err = io.ReadFull(c.conn, headBuf)
 		if err != nil {
 			log.Println("read head error", err.Error())
+			c.errChan <- err
 		}
 		n, err = io.ReadFull(c.conn, dateBuf)
 		if err != nil {
 			log.Println("read date error", err.Error())
+			c.errChan <- err
 		}
 		n, err = io.ReadFull(c.conn, tailBuf)
 		if err != nil {
 			log.Println("read tail error", err.Error())
+			c.errChan <- err
 		}
-		c.msg <- Msg{addr: ipBuf, msg: dateBuf}
+		c.msg <- Msg{addr: ipStrBuf, msg: dateBuf}
 	}
 }
 

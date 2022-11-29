@@ -61,11 +61,13 @@ func defaultSendMsgBoardCast(m *Master) {
 			log.Println(msg.Addr, msg.Date)
 			for _, conn := range m.users {
 				if conn.RemoteAddr().String() != msg.Addr {
-					l := uint16(len(msg.Date) + 15)
 					addr := strings.Split(msg.Addr, ":")
 					addr0 := []byte(addr[0])
+					ipLen := uint16(len(addr0))
+					l := uint16(len(msg.Date)) + ipLen
 					buffer := new(bytes.Buffer)
 					_ = binary.Write(buffer, binary.BigEndian, l)
+					_ = binary.Write(buffer, binary.BigEndian, ipLen)
 					_ = binary.Write(buffer, binary.BigEndian, addr0)
 					_ = binary.Write(buffer, binary.LittleEndian, msg.Date)
 					msg.Date = buffer.Bytes()

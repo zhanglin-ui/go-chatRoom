@@ -46,7 +46,7 @@ func (c *Conn) readCoroutine(ctx context.Context, m *Master) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Fatalln("connect done, exit read routine")
+			log.Println("connect done, exit read routine")
 			return
 		default:
 			if c.hbTimeout > 0 {
@@ -58,13 +58,14 @@ func (c *Conn) readCoroutine(ctx context.Context, m *Master) {
 			}
 
 			var l uint16
-			log.Println(c.rawConn.RemoteAddr().String())
 			buf := make([]byte, 2)
 			n, err := io.ReadFull(c.rawConn, buf)
 			if n == 0 && err == io.EOF {
+				time.Sleep(time.Millisecond * 10)
 				continue
 			}
 
+			log.Println(c.rawConn.RemoteAddr().String())
 			log.Println("read success from tcp")
 
 			if err != nil {
